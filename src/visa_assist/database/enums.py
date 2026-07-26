@@ -5,12 +5,26 @@ from enum import StrEnum
 
 class ApplicationStatus(StrEnum):
     SUBMITTED = "submitted"
+    APPOINTMENT_BOOKED = "appointment_booked"
+    APPOINTMENT_COMPLETED = "appointment_completed"
     BIOMETRICS_SCHEDULED = "biometrics_scheduled"
     BIOMETRICS_COMPLETED = "biometrics_completed"
+    FORWARDED_FOR_PROCESSING = "forwarded_for_processing"
+    UNDER_PROCESSING = "under_processing"
     UNDER_REVIEW = "under_review"
     ADDITIONAL_DOCUMENTS_REQUESTED = "additional_documents_requested"
+    DOCUMENT_SUBMITTED = "document_submitted"
+    PROCESSING_RESUMED = "processing_resumed"
+    PROCESSING_DELAY = "processing_delay"
+    ESCALATION_RAISED = "escalation_raised"
+    DECISION_MADE = "decision_made"
     DECISION_RECORDED = "decision_recorded"
+    REFUSED = "refused"
+    WITHDRAWAL_REQUESTED = "withdrawal_requested"
+    APPLICATION_WITHDRAWN = "application_withdrawn"
     PASSPORT_DISPATCHED = "passport_dispatched"
+    PASSPORT_RETURNED = "passport_returned"
+    DELIVERED = "delivered"
     CLOSED = "closed"
 
 
