@@ -1,1 +1,1 @@
-# No runtime dependencies yet.
+pydantic-settings>=2.0,<3.0
