@@ -1,0 +1,10 @@
+sources:
+  - source_id: uk_standard_visitor_overview
+    title: UK Standard Visitor visa
+    url: https://www.gov.uk/standard-visitor
+    destination_country: GB
+    passport_country: ALL
+    visa_type: standard_visitor
+    content_type: web_page
+    last_verified_at: null
+    enabled: false
