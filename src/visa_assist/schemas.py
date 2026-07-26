@@ -27,3 +27,24 @@ class SourceRegistry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sources: list[OfficialSource]
+
+
+class FetchMetadata(BaseModel):
+    """Metadata captured while downloading an HTML source."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str
+    url: HttpUrl
+    status_code: int
+    content_type: str | None
+    fetched_at: datetime
+
+
+class FetchedHtml(BaseModel):
+    """Raw downloaded HTML and its fetch metadata."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    html: str
+    metadata: FetchMetadata
