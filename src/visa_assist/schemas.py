@@ -48,3 +48,29 @@ class FetchedHtml(BaseModel):
 
     html: str
     metadata: FetchMetadata
+
+
+class ParsedDocumentMetadata(BaseModel):
+    """Source metadata retained with normalized document text."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str
+    title: str
+    url: HttpUrl
+    destination_country: str
+    passport_country: str
+    visa_type: str
+    content_type: str
+    last_verified_at: datetime | None
+    page_count: int | None = None
+
+
+class ParsedDocument(BaseModel):
+    """Normalized text and headings extracted from one source document."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    headings: list[str]
+    metadata: ParsedDocumentMetadata
