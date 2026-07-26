@@ -168,9 +168,7 @@ class ApplicationStatusEvent(Base):
     location: Mapped[str | None] = mapped_column(String(200))
     visible_to_applicant: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    application: Mapped[VisaApplication] = relationship(
-        back_populates="status_history"
-    )
+    application: Mapped[VisaApplication] = relationship(back_populates="status_history")
 
 
 class Appointment(Base):

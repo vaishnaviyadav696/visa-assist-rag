@@ -5,11 +5,13 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from visa_assist.database.base import Base
+from visa_assist.config import Settings
 from visa_assist.database import models  # noqa: F401
-
+from visa_assist.database.base import Base
 
 config = context.config
+settings = Settings()
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
