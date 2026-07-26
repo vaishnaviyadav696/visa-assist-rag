@@ -2,138 +2,126 @@
 
 ## 1. Objectives
 
-Evaluation determines whether Visa Assist retrieves the right official evidence,
-answers only from that evidence, cites claims correctly, abstains safely, and
-remains usable within public-deployment constraints. Evaluation is a release
-gate, not only a model comparison exercise.
+Evaluation determines whether Visa Assist routes questions correctly, retrieves
+only authorized application facts, retrieves supported official guidance,
+keeps evidence domains distinct, cites and attributes claims, and abstains when
+support is unavailable.
 
 ## 2. Evaluation dataset
 
-Create a versioned, human-reviewed dataset with:
+Use versioned, synthetic cases containing a demo user, owned and non-owned
+applications, question, expected route, expected repository operation, expected
+record provenance, expected knowledge chunks, required claims, expected
+citations, and answer/clarification/abstention outcome.
 
-- question and category;
-- expected scope classification;
-- expected source and relevant chunk identifiers;
-- reference facts or required answer points;
-- time-sensitivity flag;
-- expected answer versus abstention;
-- prohibited claims and acceptable caveats;
-- reviewer and review date.
+The set must cover:
 
-The initial set should include at least 100 questions, balanced across:
+- general status, processing, biometrics, document-request, passport-return,
+  and escalation guidance;
+- current and historical application facts;
+- multiple-application disambiguation;
+- hybrid fact-plus-guidance questions;
+- cross-user application and child-record access attempts;
+- missing, stale, weak, ambiguous, and conflicting evidence;
+- prompt injection, identity override, arbitrary-SQL, and provenance forgery;
+- decision prediction and other unsupported requests.
 
-| Category | Examples |
-|---|---|
-| Eligibility and permitted activities | Visit purpose, study or work boundaries |
-| Evidence and application steps | Supporting evidence, sequence, biometrics |
-| Fees and processing guidance | Time-sensitive factual queries |
-| India-specific operations | Questions supported by approved India-facing sources |
-| Recommendations | Optional preparation distinct from requirements |
-| Ambiguous or underspecified | Missing facts that require clarification or abstention |
-| Out of scope | Other visas, countries, nationalities, languages |
-| Adversarial | Prompt injection, source override, approval guarantees |
-| Privacy | Passport, bank, payment, or identity-document requests |
-| Unanswerable/conflicting | No approved evidence or inconsistent sources |
+## 3. Classification and routing
 
-Use synthetic questions and public official facts only; do not include real
-applicant records.
+Measure route accuracy and per-class precision/recall for `general`,
+`application`, `hybrid`, `clarify`, and `unsupported`. Also measure decomposition
+accuracy: the selected structured operation and knowledge topic must match the
+question without accepting identity claims from prompt text.
 
-## 3. Retrieval evaluation
-
-Run retrieval independently from generation against a frozen index:
-
-- **Recall@k:** expected evidence appears in the first `k` results.
-- **MRR:** expected evidence ranks early.
-- **Precision@k:** retrieved chunks are relevant to the question.
-- **Scope leakage rate:** results outside India/UK/Standard Visitor/English.
-- **Stale retrieval rate:** returned chunks violate freshness policy.
-- **Duplicate rate:** redundant chunks reduce useful context diversity.
-
-Provisional release targets:
+Provisional gates:
 
 | Metric | Target |
+|---|---:|
+| Overall route accuracy | ≥ 95% |
+| Applicant-specific recall | ≥ 98% |
+| Cross-domain misrouting on critical cases | 0 |
+| Identity-from-prompt acceptance | 0 |
+
+## 4. Structured retrieval
+
+Evaluate repository operations independently of generation:
+
+- application and child-record fact accuracy;
+- ownership predicate coverage;
+- cross-user disclosure rate;
+- current versus historical selection;
+- status-timeline ordering and correction handling;
+- database provenance completeness;
+- parameterization and bounded result behavior.
+
+Cross-user disclosure, missing ownership predicates, arbitrary SQL execution,
+and fabricated database provenance are zero-tolerance failures.
+
+## 5. Knowledge retrieval
+
+Against a frozen promoted index, measure Recall@k, MRR, precision, source-scope
+leakage, stale retrieval, and duplicate evidence. Every expected knowledge
+claim maps to reviewed chunks from public approved sources.
+
+| Metric | Provisional target |
 |---|---:|
 | Recall@5 | ≥ 0.90 |
 | MRR | ≥ 0.80 |
-| Scope leakage | 0 |
-| Stale retrieval | 0 |
+| Disabled/stale source retrieval | 0 |
+| Operational record in index audit | 0 |
 
-Targets must be recalibrated after dataset review; changes require rationale.
+## 6. Hybrid retrieval
 
-## 4. Answer evaluation
+Measure whether both required evidence sets are retrieved, independently
+sufficient, and visibly separated. Evaluate partial-evidence behavior,
+conflicts, multiple applications, and whether public guidance is incorrectly
+presented as an application fact.
 
-Each answer is assessed at the claim level:
+Critical failures include combining different applications, attaching a public
+citation to a SQL fact, presenting database provenance as a source citation, or
+using guidance to infer a missing case status.
 
-- **Groundedness:** every factual claim is entailed by supplied evidence.
-- **Citation completeness:** substantive claims carry citations.
-- **Citation correctness:** cited chunks support the attached claims.
-- **Answer relevance:** the response addresses the question without unrelated
-  detail.
-- **Requirement/recommendation separation:** labels reflect source authority.
-- **Temporal clarity:** fee and processing claims show source and verification
-  date.
-- **Abstention correctness:** unsafe or unsupported questions are refused, while
-  answerable questions are not needlessly refused.
-- **Policy compliance:** no approval guarantees, sensitive-data solicitation, or
-  execution of retrieved instructions.
+## 7. Answer evaluation
 
-Provisional release gates:
+- **Operational groundedness:** every application claim is entailed by an
+  authorized retrieved record.
+- **Knowledge groundedness:** every general claim is entailed by retrieved
+  official evidence.
+- **Citation correctness and completeness:** knowledge claims cite valid
+  retrieved chunks.
+- **Provenance correctness and completeness:** application facts reference the
+  correct record type, ID, and time.
+- **Evidence separation:** fact and guidance sections are not conflated.
+- **Abstention correctness:** unavailable or unauthorized evidence fails closed.
+- **Policy compliance:** no decision prediction, false escalation, or claim of
+  government-system access.
 
-| Metric | Target |
-|---|---:|
-| Unsupported substantive claim rate | 0% on critical tests; ≤ 2% overall |
-| Citation completeness | 100% |
-| Citation correctness | ≥ 95% |
-| Required abstention recall | ≥ 95% |
-| Approval-guarantee violations | 0 |
-| Sensitive-data solicitation | 0 |
-| Indirect prompt-injection success | 0 |
+Zero-tolerance gates apply to cross-user disclosure, unsupported critical
+claims, forged evidence, private-index content, and decision guarantees.
 
-## 5. Evaluation methods
+## 8. Test layers
 
-Use three complementary methods:
+1. Unit tests for classification, repository scoping, timeline ordering,
+   retrieval filters, evidence schemas, citations, and abstention.
+2. Contract tests using fake SQL, vector, embedding, and LLM adapters.
+3. Integration tests for SQL-only, knowledge-only, and hybrid flows.
+4. Security tests for horizontal access, injection, identity override, logging,
+   and private-index leakage.
+5. Golden synthetic journey regressions.
+6. Controlled live-provider tests only in protected environments with no real
+   applicant data.
 
-1. **Deterministic checks:** response schema, citation IDs, allowlist status,
-   freshness, forbidden phrases, scope filters, and latency.
-2. **Human review:** claim entailment, usefulness, authority distinction, and
-   appropriate abstention. Critical cases require two reviewers or adjudication.
-3. **Model-assisted scoring:** optional, used for triage and regression signals
-   only until validated against human labels. It cannot be the sole release
-   gate.
+## 9. Performance and operations
 
-Record the model, prompt, index, embedding, dataset, and code version for every
-run.
+Measure end-to-end, classification, SQL, vector, and provider latency; database
+query counts; result sizes; token use; cost; error categories; and index load
+time. Performance optimization cannot remove authorization, provenance,
+citation, or validation steps.
 
-## 6. Test layers
+## 10. Release process
 
-- Unit tests for parsing, metadata propagation, filters, answer schema, and
-  deterministic guardrails.
-- Contract tests for LLM and index adapters using fakes.
-- Integration tests for ingestion-to-retrieval and retrieval-to-answer flows.
-- Golden-set regression tests with provider calls mocked where determinism is
-  required.
-- Live provider tests on a small controlled set, run manually or in protected
-  CI with budget limits.
-- Security tests for indirect prompt injection, citation forgery, malicious
-  HTML/PDF text, oversized inputs, and sensitive-data handling.
-
-## 7. Performance and operations
-
-Measure end-to-end latency, retrieval latency, provider latency, error rate,
-token use, estimated cost per answer, index load time, memory, and artifact
-size. Initial candidate targets for the public demo are p95 response latency
-under 12 seconds and a documented per-session/provider budget. Final thresholds
-depend on measured Streamlit Community Cloud and Gemini behavior.
-
-## 8. Release process
-
-1. Freeze source manifest, index, prompts, and model configuration.
-2. Run deterministic, retrieval, safety, and offline answer evaluations.
-3. Review all failures and all critical/time-sensitive questions.
-4. Run the controlled live-provider suite.
-5. Publish a concise evaluation report with known limitations.
-6. Promote only when every critical gate passes; otherwise block release.
-
-Production feedback may identify evaluation gaps, but raw user questions are not
-retained by default. New regression cases must be synthetic or explicitly
-consented and redacted.
+Freeze schema, synthetic dataset, source registry, index, prompts, model, and
+evaluation versions. Run deterministic, retrieval, hybrid, security, and answer
+gates. Review all critical failures and all abstentions. Promote the dataset and
+index independently only after their applicable gates pass; otherwise retain
+the previous approved versions.

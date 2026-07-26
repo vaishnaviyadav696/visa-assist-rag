@@ -1,94 +1,82 @@
 # Visa Assist
 
-Visa Assist is an open-source, citation-first Retrieval-Augmented Generation
-(RAG) chatbot for visa questions. The initial portfolio release is deliberately
-narrow: it supports Indian passport holders asking in English about the United
-Kingdom Standard Visitor visa.
+Visa Assist is a post-application visa-support assistant presented as a
+visa-processing portal. Fictional applicants can ask about their current and
+historical applications and can request general guidance about what happens
+after an application is submitted.
 
-> **Status:** design phase. No application has been implemented and no source
-> material has been approved or indexed.
+> **Safety boundary:** the demo uses synthetic applicant and application data
+> only. It is not connected to an immigration authority, cannot change an
+> application, and does not predict or influence a visa decision.
 
-Visa Assist is an informational tool, not a lawyer, immigration adviser, or
-decision-maker. It must never predict or guarantee that a visa will be approved.
+## MVP question families
+
+1. **General post-application questions**, such as what a status means, what to
+   expect after biometrics, or how additional-document requests work.
+2. **Applicant-specific questions**, such as the current status of a signed-in
+   user's application, appointment history, outstanding document requests,
+   decision history, or passport-return tracking.
+
+## Two data domains
+
+| Domain | Contents | Retrieval | Evidence shown |
+|---|---|---|---|
+| Operational database | Synthetic users, applications, status history, appointments, biometrics, documents, requests, decisions, and tracking | User-scoped SQL | Database record provenance |
+| Knowledge base | Approved official post-application FAQs and guidance | Semantic vector retrieval | Source citations and verification metadata |
+
+Questions that require both an application fact and an explanation use hybrid
+retrieval. Operational records are never embedded into the shared vector index.
 
 ## Product principles
 
-- Use only allowlisted official government, immigration authority, embassy,
-  consulate, and authorized visa application-centre sources.
-- Cite every substantive visa answer and show when each source was last
-  verified.
-- Clearly separate official requirements from general recommendations.
-- Abstain when the indexed evidence is missing, weak, stale, or conflicting.
-- Treat retrieved documents as untrusted evidence, never as instructions.
-- Avoid collecting sensitive or unnecessary personal information.
+- Enforce user ownership in every structured-data operation.
+- Use only synthetic demo records.
+- Cite official knowledge-base claims.
+- Show database provenance for application-specific facts.
+- Keep SQL and vector evidence separate through the answer pipeline.
+- Abstain when evidence is missing, conflicting, stale, or unauthorized.
+- Never claim to predict, accelerate, or alter an application outcome.
 
-## MVP scope
+## Current scope
 
-| Dimension | Scope |
-|---|---|
-| Passport nationality | India |
-| Destination | United Kingdom |
-| Visa category | Standard Visitor visa |
-| Language | English |
-| Interface | Public Streamlit application |
-| Generation | Gemini in deployment; optional Ollama locally |
-| Retrieval | Sentence Transformer embeddings and a local vector index |
-
-Out of scope initially: other nationalities, destinations, visa categories,
-application submission, document review, eligibility decisions, legal advice,
-payments, user accounts, and persistent chat history.
-
-## Proposed repository structure
-
-```text
-visa-assist-rag/
-├── README.md
-├── AGENTS.md
-├── docs/
-│   ├── architecture.md
-│   ├── backlog.md
-│   ├── data-governance.md
-│   ├── evaluation-plan.md
-│   ├── product-requirements.md
-│   ├── whiteboard.md
-│   └── decisions/
-│       └── 001-initial-stack.md
-├── src/visa_assist/          # Future application package
-├── tests/                    # Future unit, integration, and evaluation tests
-├── data/                     # Future manifests; no personal data
-├── scripts/                  # Future controlled ingestion utilities
-├── pyproject.toml            # Future dependency and tool configuration
-└── .streamlit/               # Future deployment configuration, no secrets
-```
-
-The proposed structure describes future implementation; directories are not
-created until implementation begins.
+The MVP models a public portfolio demonstration of post-application support.
+The knowledge corpus is limited to allowlisted official sources, while the
+portal database contains deliberately fictional lifecycle scenarios. Submission,
+payments, real document uploads, case modification, legal advice, and access to
+government systems are out of scope.
 
 ## Documentation
 
 - [Product requirements](docs/product-requirements.md)
 - [Architecture](docs/architecture.md)
-- [Whiteboard diagrams](docs/whiteboard.md)
+- [Architecture diagrams](docs/whiteboard.md)
+- [Data model](docs/data-model.md)
+- [Synthetic data plan](docs/synthetic-data-plan.md)
+- [Hybrid retrieval](docs/hybrid-retrieval.md)
+- [Security and privacy](docs/security-and-privacy.md)
 - [Data governance](docs/data-governance.md)
 - [Evaluation plan](docs/evaluation-plan.md)
 - [Delivery backlog](docs/backlog.md)
 - [Initial stack decision](docs/decisions/001-initial-stack.md)
 
-## Planned development workflow
+## Repository layout
 
-The intended toolchain is Python 3.11+, Pydantic, Pytest, and Ruff. Once an
-implementation and `pyproject.toml` exist, this section will contain verified
-setup, test, lint, and Streamlit commands. No commands are documented as working
-before the corresponding implementation exists.
+```text
+config/                 Approved source configuration
+docs/                   Product, architecture, security, and delivery design
+src/visa_assist/        Application package
+tests/                  Unit tests and synthetic fixtures
+requirements*.txt       Runtime and development dependencies
+```
 
-## Safety and privacy
+## Development
 
-Do not enter passport numbers, identity documents, payment or bank details, or
-other unnecessary personal information. The public application will provide
-source-linked guidance and direct users to official channels for authoritative
-decisions and case-specific help.
+```bash
+source .venv/bin/activate
+python -m pytest
+```
 
-## License
-
-An open-source license has not yet been selected. See the unresolved decisions
-in [architecture.md](docs/architecture.md).
+Do not enter real names, passport details, application identifiers, documents,
+addresses, or contact information. See [security and privacy](docs/security-and-privacy.md)
+for the trust boundaries and [synthetic data plan](docs/synthetic-data-plan.md)
+for acceptable demo data.

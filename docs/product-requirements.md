@@ -2,112 +2,110 @@
 
 ## 1. Product summary
 
-Visa Assist is a public, English-language RAG chatbot that answers questions
-about the UK Standard Visitor visa for Indian passport holders. It retrieves
-evidence only from approved official sources and produces cited, bounded
-guidance. The product demonstrates production-minded RAG engineering; it does
-not replace official guidance or professional advice.
+Visa Assist is a post-application support assistant presented as a synthetic
+visa-processing portal. It helps fictional applicants understand official
+post-application guidance and inspect facts about their current or historical
+applications. It does not submit, modify, prioritize, predict, or decide cases.
 
-## 2. Users and needs
+## 2. Users and question families
 
-### Primary user
+The primary user is a signed-in synthetic applicant. A portfolio reviewer may
+also use predefined demo identities to inspect system behavior.
 
-An Indian passport holder researching a short UK visit who needs to locate and
-understand official requirements, costs, timelines, and application steps.
+| Family | Example | Required evidence |
+|---|---|---|
+| General guidance | “What happens after biometrics?” | Cited official knowledge-base evidence |
+| Applicant-specific | “When was my biometric appointment?” | User-owned operational records with database provenance |
+| Hybrid | “My status says additional documents requested—what should I do?” | User-owned status/request records plus cited official guidance |
 
-### Portfolio reviewer
+## 3. Data domains
 
-An engineer or hiring manager assessing architecture, retrieval quality,
-guardrails, testing, observability, and engineering decisions.
+### Structured operational database
 
-## 3. MVP scope
+The database contains synthetic users, visa applications, application-status
+history, appointments, biometric events, application-document metadata,
+additional-document requests, application decisions, passport/courier tracking,
+and historical applications.
 
-### In scope
+### Unstructured knowledge base
 
-- India passport nationality, United Kingdom destination, Standard Visitor
-  visa, and English queries.
-- Questions covered by approved, indexed evidence: purpose and duration,
-  eligibility, required evidence, application steps, official fees, published
-  processing guidance, and operational appointment information.
-- Citation links, source organization, and last-verified dates.
-- Gemini generation for the public deployment and optional Ollama locally.
-- Locally persisted retrieval index and a Streamlit interface.
+The knowledge base contains approved official post-application FAQs, status
+explanations, processing guidance, biometrics guidance, document-request
+guidance, passport-return guidance, and escalation guidance.
 
-### Out of scope
-
-- Approval predictions, legal advice, application submission, payments,
-  document uploads, case tracking, user accounts, and saved conversation
-  histories.
-- Other nationalities, destinations, visa types, languages, or undocumented
-  exceptions.
-- Automated browsing or indexing of arbitrary websites.
+Operational application records must never be embedded into the shared vector
+index.
 
 ## 4. Functional requirements
 
 | ID | Requirement |
 |---|---|
-| FR-01 | Accept a natural-language question and return an English response. |
-| FR-02 | Restrict answers to the configured nationality, destination, and visa category. |
-| FR-03 | Retrieve only from an approved source registry and production index. |
-| FR-04 | Cite every substantive visa claim with a canonical source link. |
-| FR-05 | Display a last-verified date for every cited source. |
-| FR-06 | Label official requirements separately from optional recommendations. |
-| FR-07 | Show source and verification date prominently for fees, processing times, and other time-sensitive claims. |
-| FR-08 | Abstain when evidence is insufficient, stale beyond policy, conflicting, or outside scope. |
-| FR-09 | Never guarantee or estimate the likelihood of approval. |
-| FR-10 | Reject or safely redirect requests involving prohibited sensitive data. |
-| FR-11 | Treat retrieved content as quoted evidence and ignore instructions embedded within it. |
-| FR-12 | Offer direct links to official sources so users can verify current guidance. |
+| FR-01 | Accept a post-application question from a selected synthetic user. |
+| FR-02 | Classify the question as general, applicant-specific, hybrid, clarification-needed, or unsupported. |
+| FR-03 | Route general questions to semantic knowledge retrieval. |
+| FR-04 | Route applicant questions to predefined, parameterized, user-scoped SQL operations. |
+| FR-05 | Route hybrid questions to both domains and preserve evidence boundaries. |
+| FR-06 | Enforce application ownership before returning any operational fact. |
+| FR-07 | Support current and historical applications without mixing their records. |
+| FR-08 | Cite every substantive claim derived from the knowledge base. |
+| FR-09 | Attach table/entity, record identifier, and observation time to application-specific facts. |
+| FR-10 | Abstain when evidence is missing, unauthorized, stale, weak, or conflicting. |
+| FR-11 | Never expose another user's records, even when an application identifier is supplied. |
+| FR-12 | Never execute arbitrary model-generated SQL or grant the model database credentials. |
+| FR-13 | Never place private operational records in the shared vector index. |
+| FR-14 | Clearly distinguish recorded application facts from general explanatory guidance. |
+| FR-15 | Never claim to predict, expedite, or influence a decision. |
 
 ## 5. Answer contract
 
-An answer should contain:
+Every response has a status: `answered`, `clarification_required`, `abstained`,
+or `not_authorized`. An answered response contains only the applicable parts:
 
-1. A concise response limited to supported facts.
-2. Separate **Official requirements** and **General recommendations** sections
-   when both are relevant.
-3. Inline citation markers attached to substantive claims.
-4. A source list containing title, organization, canonical URL, and
-   last-verified date.
-5. A targeted disclaimer for time-sensitive or case-specific information.
+- a concise answer;
+- **Your application** facts with database provenance;
+- **Official guidance** with inline citations;
+- limitations or freshness warnings;
+- a trace identifier that contains no applicant data.
 
-When the contract cannot be satisfied, the system returns an abstention,
-explains why, and points to an appropriate official source.
+The assistant must not infer missing application facts from general guidance or
+present general processing estimates as the user's expected decision date.
 
 ## 6. Non-functional requirements
 
-- **Quality:** cited claims must be entailed by retrieved source text.
-- **Security:** no arbitrary source ingestion; document text cannot alter system
-  behavior.
-- **Privacy:** no storage of user questions by default and no collection of
-  prohibited personal data.
-- **Maintainability:** UI, domain logic, retrieval, generation, and source
-  ingestion are independently testable.
-- **Portability:** LLM and vector-index implementations are replaceable behind
-  interfaces.
-- **Accessibility:** keyboard-usable interface, readable contrast, descriptive
-  link text, and plain-language status messages.
-- **Operations:** failures produce safe user messages; logs exclude query text
-  and sensitive content by default.
+- **Isolation:** cross-user data disclosure rate is zero.
+- **Grounding:** every operational fact maps to an authorized record and every
+  knowledge claim maps to retrieved evidence.
+- **Privacy:** only synthetic applicant data is used; logs exclude raw content.
+- **Security:** repositories enforce ownership and least privilege.
+- **Traceability:** routing, evidence identifiers, model/index versions, and
+  abstention reasons are inspectable without exposing record content.
+- **Maintainability:** SQL retrieval, semantic retrieval, routing, generation,
+  authorization, and presentation are independently testable.
+- **Accessibility:** status histories and answers remain keyboard-usable and
+  understandable without relying solely on color.
 
-Initial performance and quality thresholds are defined in
-[evaluation-plan.md](evaluation-plan.md), then calibrated with a reviewed
-evaluation set before release.
+## 7. MVP acceptance criteria
 
-## 7. Success criteria
+- Both question families and the hybrid path pass reviewed test scenarios.
+- Every SQL result is constrained to the active synthetic user.
+- No operational record appears in the vector index or knowledge citations.
+- Knowledge claims have valid official citations.
+- Application facts have valid database provenance.
+- Unsupported, ambiguous, and unauthorized cases fail closed.
+- Current and historical timelines are ordered and labeled correctly.
+- The public demo can be reset to a known synthetic dataset.
 
-- All production sources are allowlisted and carry verification metadata.
-- Release quality gates for retrieval, citations, groundedness, abstention, and
-  safety pass.
-- No test answer contains an unsupported approval guarantee.
-- A reviewer can trace a question through retrieval, generation, validation,
-  and citations.
-- The public demo operates within agreed latency and provider-cost limits.
+## 8. Out of scope
 
-## 8. Assumptions and risks
+Real applicants or production personal data, government-system integration,
+application submission or editing, payments, real document storage, messaging
+caseworkers, decision prediction, legal advice, automated escalation, arbitrary
+website ingestion, and unrestricted natural-language-to-SQL are out of scope.
 
-No official source has yet been researched or approved. Source accessibility,
-licensing constraints, page structure, update frequency, Gemini quotas, and
-Streamlit resource limits require validation. Immigration guidance changes;
-freshness and abstention are therefore product behavior, not background
-maintenance.
+## 9. Risks and assumptions
+
+Demo authentication does not prove production identity assurance. Synthetic
+data may accidentally encode unrealistic workflows, so scenarios need domain
+review. Official guidance may change and requires freshness controls. Hybrid
+answers can blur fact and guidance unless the evidence types remain visibly
+separate.

@@ -1,158 +1,143 @@
 # Architecture
 
-## 1. Context and goals
+## 1. Goal
 
-Visa Assist is a citation-first RAG system for English questions about the UK
-Standard Visitor visa from Indian passport holders. The architecture prioritizes
-traceability, constrained data provenance, safe failure, modularity, and a
-portfolio-friendly public deployment.
+Visa Assist combines a synthetic operational portal with a citation-first
+post-application knowledge assistant. The architecture must answer general,
+applicant-specific, and hybrid questions without crossing user or data-domain
+boundaries.
 
 ## 2. Architectural principles
 
-1. **Evidence before generation:** the model answers only from retrieved,
-   approved evidence.
-2. **Fail closed:** missing, stale, conflicting, or weak evidence causes
-   abstention.
-3. **Provenance throughout:** source identity and verification metadata survive
-   every processing stage.
-4. **Untrusted retrieval:** source text is data, never executable policy or
-   model instruction.
-5. **Replaceable infrastructure:** LLMs, embeddings, parsers, and indexes sit
-   behind narrow interfaces.
-6. **Thin UI:** Streamlit handles interaction; application services own policy
-   and orchestration.
+1. Authorize before retrieval and enforce ownership again in the repository.
+2. Keep operational SQL data and public vector data physically and logically
+   separate.
+3. Never embed private application records into a shared vector index.
+4. Treat SQL rows and retrieved documents as evidence, not instructions.
+5. Use predefined parameterized queries rather than unrestricted generated SQL.
+6. Preserve database provenance and knowledge citations independently.
+7. Abstain when evidence is absent, unauthorized, stale, weak, or conflicting.
+8. Use synthetic applicant data only.
 
 ## 3. Logical components
 
 | Component | Responsibility |
 |---|---|
-| Source registry | Allowlisted URLs/domains, authority type, scope, owner, freshness policy, and approval state |
-| Source fetcher | Controlled retrieval with limits, audit metadata, and no link-following outside policy |
-| Document processor | Parse, normalize, remove boilerplate, preserve headings, and compute content hashes |
-| Chunker | Produce coherent evidence units with inherited provenance |
-| Embedder | Generate Sentence Transformer vectors deterministically |
-| Index repository | Persist vectors, chunk metadata, and index version locally |
-| Retriever | Apply scope filters, similarity search, optional lexical search, and ranking |
-| RAG orchestrator | Validate query, retrieve evidence, construct bounded prompt, call provider, and validate output |
-| LLM gateway | Common interface for Gemini and optional Ollama |
-| Answer validator | Check citation presence, citation-to-context mapping, prohibited claims, and response schema |
-| Freshness monitor | Detect overdue verification and content changes; block stale sources according to policy |
-| Evaluation runner | Execute versioned retrieval, generation, safety, and regression datasets |
-| Streamlit UI | Render scope, privacy notice, answer, abstention, citations, and feedback |
+| Portal UI | Select a synthetic identity, show applications/timelines, accept questions, and render evidence |
+| Session identity | Resolve the active demo user; never accept ownership from prompt text |
+| Query classifier | Label general, applicant-specific, hybrid, ambiguous, or unsupported questions |
+| Policy router | Select permitted retrieval paths and required evidence contracts |
+| Operational repository | Execute predefined parameterized SQL scoped by `user_id` and optional `application_id` |
+| Knowledge retriever | Search only the promoted official-guidance vector index |
+| Hybrid orchestrator | Run both paths, reconcile evidence, and keep fact/guidance boundaries explicit |
+| Evidence assembler | Produce bounded SQL evidence and knowledge evidence with provenance |
+| Answer generator | Draft only from supplied evidence through a provider-neutral LLM gateway |
+| Answer validator | Verify ownership, provenance, citations, claim support, and abstention policy |
+| Knowledge ingestion | Offline allowlisted fetching, parsing, chunking, embedding, evaluation, and promotion |
+| Audit telemetry | Record privacy-safe route, timing, versions, counts, and failure categories |
 
-## 4. Proposed module structure
+The [whiteboard](whiteboard.md) contains the complete Mermaid views.
+
+## 4. Query lifecycle
+
+1. Resolve the active synthetic user from the trusted session.
+2. Validate the question and detect unsafe or unsupported requests.
+3. Classify it into a retrieval route.
+4. For SQL retrieval, select a repository operation and bind the trusted
+   `user_id`; an application ID is an additional filter, never proof of access.
+5. For knowledge retrieval, apply source, topic, freshness, and score filters.
+6. For hybrid retrieval, run both independently and preserve their evidence
+   types.
+7. Assemble a bounded evidence package.
+8. Generate a response or deterministic abstention.
+9. Validate every operational claim against database provenance and every
+   knowledge claim against a citation.
+10. Render facts, guidance, limitations, and evidence separately.
+
+## 5. Structured retrieval
+
+The application layer calls narrow operations such as:
+
+- list applications owned by a user;
+- retrieve one owned application;
+- reconstruct status history in event order;
+- retrieve owned appointments, biometric events, document metadata, requests,
+  decisions, and tracking events.
+
+Repositories use parameterized SQL and include `user_id` in ownership joins or
+predicates. Results carry entity type, stable synthetic record ID, application
+ID, and recorded/observed timestamps. The LLM never receives a database
+connection or arbitrary query tool.
+
+## 6. Knowledge retrieval
+
+Only approved public post-application sources pass through the offline
+ingestion pipeline. Chunks retain source ID, canonical URL, heading path,
+verification time, content hash, and index version. Online retrieval filters
+disabled or stale sources and rejects evidence below the configured relevance
+threshold. Citations point only to promoted knowledge chunks.
+
+## 7. Hybrid retrieval
+
+Hybrid questions are decomposed into an application-fact need and a guidance
+need. The two retrieval paths run under their own policies. Evidence is not
+silently fused into an unlabeled blob: the answer presents recorded facts under
+**Your application** and public explanations under **Official guidance**. A
+failure in either required half causes a partial-answer warning or abstention,
+according to the question's intent. See [hybrid-retrieval.md](hybrid-retrieval.md).
+
+## 8. Data and trust boundaries
+
+The relational store contains synthetic operational records. The vector index
+contains public official text only. Applicant-document records contain metadata
+for the demo; real uploaded files are out of scope. Session identity, repository
+authorization, provider calls, and index promotion are explicit trust
+boundaries. See [data-model.md](data-model.md) and
+[security-and-privacy.md](security-and-privacy.md).
+
+## 9. Deployment
+
+The public process loads a read-only synthetic dataset and a separately built,
+promoted knowledge index. It uses server-side secrets for the LLM provider.
+Knowledge ingestion and index building never run in the public request path.
+The operational database identity has minimum read permissions for the MVP.
+Reset and migration workflows must be separate from user requests.
+
+## 10. Proposed module boundaries
 
 ```text
 src/visa_assist/
-├── domain/          # Pydantic models, policies, and domain errors
-├── application/     # Ingestion and answer use cases
-├── ingestion/       # Fetching, parsing, chunking, validation
-├── retrieval/       # Embeddings, indexes, ranking, filters
-├── generation/      # Prompt construction and LLM adapters
-├── guardrails/      # Scope, privacy, injection, citation checks
-├── evaluation/      # Dataset schemas, metrics, runners
-├── observability/   # Structured, privacy-safe events
-├── config/          # Validated environment configuration
-└── ui/              # Streamlit entry point and presentation
+├── domain/          # Data contracts, evidence, provenance, policies
+├── application/     # Classification, routing, orchestration, answers
+├── operational/     # User-scoped repositories and SQL adapters
+├── knowledge/       # Ingestion, embeddings, vector retrieval, citations
+├── generation/      # Prompt construction and provider adapters
+├── security/        # Identity, authorization, redaction, validation
+├── evaluation/      # Synthetic datasets, metrics, regression runners
+├── observability/   # Privacy-safe telemetry
+└── ui/              # Thin portal presentation
 ```
 
-Dependency direction should point inward: infrastructure adapters implement
-interfaces owned by domain/application modules. Domain code must not import
-Streamlit, Gemini, Ollama, or a concrete vector store.
+Domain and application code own interfaces; infrastructure adapters point
+inward. The UI, LLM provider, SQL engine, and vector implementation remain
+replaceable.
 
-## 5. Ingestion and indexing
+## 11. Failure behavior
 
-Ingestion is an explicit offline workflow, separate from user queries:
+- Missing identity or ownership mismatch: return `not_authorized` without
+  confirming whether a record exists.
+- No matching application or evidence: abstain or request clarification.
+- Weak or stale knowledge evidence: abstain from the unsupported guidance.
+- Conflicting database events: report the conflict without inventing a current
+  state.
+- Provider failure or invalid output: return a safe failure, never an uncited
+  fallback.
+- Database or index outage: identify the unavailable evidence domain and avoid
+  substituting the other domain for it.
 
-1. Select an approved registry entry.
-2. Confirm URL, domain, source type, and permitted scope.
-3. Fetch with bounded timeouts and size limits.
-4. Store fetch metadata and a content hash; avoid raw archives unless justified.
-5. Parse and normalize while preserving headings and effective-date language.
-6. Flag suspicious instructions and other prompt-injection patterns for review;
-   never promote them to instructions.
-7. Chunk and attach immutable provenance.
-8. Embed, index, and emit a versioned manifest.
-9. Run ingestion checks and the evaluation suite before promotion.
-10. Atomically promote the approved index version or retain the previous one.
+## 12. Open implementation decisions
 
-Raw content does not enter production retrieval merely because it was fetched.
-Source approval and index promotion are separate controls.
-
-## 6. Online query lifecycle
-
-1. Apply length, scope, and sensitive-data checks.
-2. Normalize the query without adding unsupported applicant facts.
-3. Retrieve using fixed MVP filters: India, UK, Standard Visitor, English.
-4. Reject results below relevance or freshness policy.
-5. Assemble a token-bounded context with stable chunk identifiers.
-6. Instruct the LLM to use only supplied evidence, distinguish requirements
-   from recommendations, and abstain when necessary.
-7. Parse the response into a Pydantic answer schema.
-8. Verify each citation refers to a retrieved chunk and required claims have
-   citations.
-9. Block approval guarantees and unsupported time-sensitive statements.
-10. Return a validated answer or deterministic abstention.
-
-## 7. Data contracts
-
-The future domain models should include:
-
-- `SourceRecord`: stable ID, canonical URL, organization, authority type,
-  allowlist status, scope, owner, last checked, last human verified, next review,
-  content hash, and status.
-- `Document`: source ID, title, retrieved time, effective-date text, language,
-  content hash, and normalized content.
-- `Chunk`: stable ID, document/source IDs, heading path, text, ordinal, token
-  count, and embedding version.
-- `Citation`: chunk ID, source ID, title, URL, supporting excerpt locator, and
-  last-verified date.
-- `Answer`: status, answer sections, citations, limitations, and trace ID.
-
-Exact schemas belong to implementation, not this design phase.
-
-## 8. Deployment and operations
-
-The public Streamlit process loads a prebuilt, approved local index artifact at
-startup. It calls Gemini through a server-side secret. Optional Ollama support is
-local-only and must not affect deployment behavior. Index building should occur
-outside the public request path.
-
-Configuration is validated at startup. Secrets remain in Streamlit secret
-management or local ignored environment files. Logs should contain trace IDs,
-timings, index/model versions, result counts, and error categories—not raw
-questions, answers, or personal data.
-
-## 9. Threats and controls
-
-| Threat | Control |
-|---|---|
-| Arbitrary or compromised source | Explicit allowlist, review state, content hash, promotion gate |
-| Indirect prompt injection | Delimited evidence, fixed system policy, no tools from document instructions, adversarial tests |
-| Unsupported claim | Evidence-only prompt, structured citations, deterministic citation validation, abstention |
-| Stale fee or timeline | Per-source freshness policy, visible verification date, stale-source exclusion |
-| Sensitive-data disclosure | Up-front warning, input detection, no query logging, no persistent chat |
-| Provider outage or malformed output | Timeouts, bounded retry policy, schema validation, safe error/abstention |
-| Public-demo abuse | Input limits, session throttling, quota/cost controls, generic failure messages |
-
-## 10. Unresolved decisions
-
-The following require spikes or source research before implementation:
-
-- Concrete local index: FAISS versus Chroma (or a smaller embedded alternative).
-- Embedding model and its quality/resource trade-off.
-- Vector-only versus hybrid retrieval; whether MVP includes reranking.
-- HTML-only ingestion versus HTML and PDF.
-- Curated URL manifest versus constrained sitemap discovery.
-- Automated fetching policy and compliance with source terms.
-- Human verification meaning, ownership, and review intervals by source type.
-- Index artifact storage, versioning, integrity checks, and CI promotion.
-- Gemini model, quotas, rate limiting, and public cost ceiling.
-- Deterministic versus model-assisted groundedness validation.
-- Citation granularity: page, section, paragraph, or excerpt locator.
-- Whether anonymous feedback is stored and, if so, for how long.
-- Open-source license and contribution governance.
-
-The initial stack choices and consequences are recorded in
-[decisions/001-initial-stack.md](decisions/001-initial-stack.md). Diagrams are
-maintained in [whiteboard.md](whiteboard.md).
+The relational engine, vector index, embedding model, authentication mechanism,
+deployment host, and model provider require implementation-specific decisions.
+For the MVP, any choice must preserve read-only synthetic operational data,
+offline index promotion, repository-level isolation, and evidence contracts.

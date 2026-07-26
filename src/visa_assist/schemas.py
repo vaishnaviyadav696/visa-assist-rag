@@ -74,3 +74,15 @@ class ParsedDocument(BaseModel):
     text: str
     headings: list[str]
     metadata: ParsedDocumentMetadata
+
+
+class DocumentChunk(BaseModel):
+    """A bounded text segment retaining its source document metadata."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chunk_id: str
+    text: str
+    token_count: int = Field(ge=1)
+    headings: list[str]
+    metadata: ParsedDocumentMetadata

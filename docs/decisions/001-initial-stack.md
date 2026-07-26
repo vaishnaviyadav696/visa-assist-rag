@@ -1,149 +1,110 @@
-# ADR 001: Initial Technology Stack
+# ADR 001: Initial Technology Stack and Data Separation
 
-- **Status:** Accepted for MVP design
-- **Date:** 2026-07-25
+- **Status:** Accepted for MVP design, revised for post-application support
+- **Date:** 2026-07-26
 - **Decision owners:** Project maintainers
 
 ## Context
 
-Visa Assist is a public portfolio RAG chatbot focused on one bounded use case:
-Indian passport holders asking English-language questions about the UK Standard
-Visitor visa. The stack should be understandable in interviews, inexpensive to
-operate, easy to run locally, and modular enough to demonstrate production
-engineering without premature infrastructure.
+Visa Assist has changed from a general pre-application RAG chatbot into a
+post-application portal assistant. It must answer general guidance questions and
+questions about current or historical synthetic applications. That requires
+both structured operational retrieval and semantic knowledge retrieval without
+mixing private-style records into a shared index.
 
 ## Decision
 
 Use:
 
-- Python 3.11 or newer;
-- Streamlit for the public user interface;
-- framework-light modular Python services;
-- Pydantic for configuration and domain boundary validation;
-- Sentence Transformer embeddings;
-- a locally persisted vector index, with the concrete implementation selected
-  after a benchmark;
-- Gemini as the generation provider for public deployment;
-- an optional Ollama adapter for local development;
-- Pytest for testing and Ruff for linting and formatting;
-- GitHub for source control and continuous integration;
-- Streamlit Community Cloud for the public MVP.
+- Python 3.11 or newer and framework-light application services;
+- Pydantic models at configuration and evidence boundaries;
+- a relational SQL database for synthetic users and application records;
+- predefined, parameterized, user-scoped repositories for structured retrieval;
+- Sentence Transformer embeddings and a locally persisted vector index for
+  approved public guidance only;
+- a typed classifier/router for SQL, knowledge, hybrid, clarification, and
+  unsupported paths;
+- Gemini behind a provider-neutral gateway for public deployment, with an
+  optional local provider adapter;
+- a thin portal UI, initially suitable for Streamlit if deployment constraints
+  remain acceptable;
+- Pytest for tests and Ruff for linting/formatting;
+- separate, versioned synthetic-database and knowledge-index artifacts.
 
-The Streamlit layer will call application services rather than containing
-retrieval or generation logic. Embedding, vector index, and LLM dependencies
-will implement project-owned interfaces.
+The concrete SQL engine, vector index, embedding model, and hosting platform
+remain implementation decisions. An embedded relational database is acceptable
+for a read-only portfolio MVP if it preserves constraints and repository-level
+authorization; production use would require a new decision.
+
+## Data-boundary decision
+
+Operational records are never embedded into the shared vector index. Hybrid
+retrieval means running authorized SQL retrieval and public semantic retrieval
+as separate operations, then assembling typed evidence in memory. It does not
+mean vectorizing private application histories.
+
+The LLM receives neither database credentials nor a general SQL execution tool.
+Application services select narrow repository operations, and repositories bind
+the trusted session user to parameterized queries.
 
 ## Rationale
 
-### Python
+Relational storage fits ownership, temporal events, referential integrity, and
+precise application lookups. Vector retrieval fits variable-language questions
+over curated public guidance. Keeping them separate makes access control,
+provenance, citations, evaluation, deletion, and incident response clearer.
 
-Python is the common language across document processing, machine learning,
-retrieval, evaluation, and web-service tooling. Its ecosystem lets the project
-use mature libraries without crossing language boundaries, while type hints and
-clear package boundaries keep the framework-light codebase maintainable.
-
-### Streamlit
-
-Streamlit provides a usable, publicly deployable chat interface with little
-front-end infrastructure. That keeps MVP effort focused on retrieval quality,
-grounding, citations, and safety. Application logic remains outside Streamlit
-so a dedicated API or frontend can replace it if concurrency, customization, or
-operational requirements outgrow the platform.
-
-### Gemini
-
-Gemini supplies managed text generation without requiring the public deployment
-to host a large model. It is suitable for a resource-constrained portfolio demo
-and supports server-side API access. A project-owned gateway limits provider
-coupling and allows timeouts, quota controls, structured-response validation,
-and a future provider replacement.
-
-### Local vector index
-
-The initial corpus is deliberately small and curated, so a managed vector
-database would add credentials, networking, cost, and operational complexity
-before those capabilities are needed. A locally persisted index is inexpensive,
-inspectable, reproducible, and can be shipped as a versioned, prebuilt artifact.
-The concrete index implementation will be chosen by benchmark.
-
-### Sentence Transformers
-
-Sentence Transformers offers locally runnable embedding models with broad model
-choice and no per-query embedding API dependency. Local embeddings improve cost
-predictability and make index builds reproducible. The selected model will be
-recorded and versioned after evaluation of retrieval quality, memory use,
-license, artifact size, and Streamlit startup time.
-
-### Pydantic
-
-Pydantic gives configuration, source metadata, chunks, citations, and model
-responses explicit runtime-validated contracts. These boundaries are especially
-useful where untrusted document content and external model output enter the
-system. Validation failures can therefore become deterministic safe failures
-instead of leaking malformed data deeper into the application.
-
-### Pytest
-
-Pytest supports small unit tests, reusable fixtures, parametrized evaluation
-cases, and explicit integration-test markers. Its fixture and mocking ecosystem
-also makes it straightforward to test retrieval and generation without making
-network calls or exposing applicant data.
-
-### Ruff
-
-Ruff provides fast linting and formatting through one tool with minimal
-configuration. Consistent automated checks reduce style churn and catch common
-Python defects locally and in continuous integration without adding several
-overlapping developer dependencies.
-
-Avoiding a heavy orchestration framework initially makes retrieval, prompts,
-guardrails, and data flow visible to reviewers. Such a framework may be adopted
-later only if evidence shows that it removes meaningful complexity.
+Framework-light services expose the routing and evidence logic for review.
+Pydantic validates boundaries, while project-owned interfaces keep SQL, vector,
+LLM, and UI implementations replaceable.
 
 ## Consequences
 
 ### Positive
 
-- Low operational complexity and a short path to a public demonstration.
-- Clear module boundaries and provider replacement points.
-- Reproducible local retrieval without a managed vector database.
-- Familiar, interview-ready tooling.
+- Exact, auditable user-scoped operational retrieval.
+- Semantic guidance retrieval with conventional citations.
+- No shared-vector leakage of applicant-style records.
+- Independent dataset and index builds, evaluation, promotion, and rollback.
+- Clear evidence contracts for hybrid answers.
 
 ### Negative
 
-- Streamlit offers limited control over concurrency, background work, and UI.
-- Local index artifacts require explicit build, versioning, and deployment
-  procedures.
-- Gemini introduces an external dependency, quota, privacy, and cost concerns.
-- Ollama and Gemini may differ in output behavior.
-- Streamlit Community Cloud imposes resource and availability constraints.
+- Two stores and retrieval paths increase testing and orchestration work.
+- Demo identity selection is not production authentication.
+- SQL and vector evidence require different freshness and provenance policies.
+- Streamlit may limit production-grade sessions, concurrency, and authorization
+  integration.
+- Local artifacts require explicit versioning and deployment procedures.
 
 ## Guardrails
 
-- Ingestion is offline and cannot run from public chat requests.
-- Only reviewed, allowlisted sources enter a promoted index.
-- Secrets remain outside Git.
-- Provider and vector-index details do not leak into domain models.
-- Every release pins and records model, embedding, prompt, and index versions.
-- A failed provider call or invalid model response produces a safe failure, not
-  an uncited fallback answer.
-
-## Deferred decisions
-
-Before implementation, benchmark FAISS, Chroma, or another embedded index using
-representative chunks. Select the embedding model using retrieval quality,
-memory, artifact size, license, and Streamlit startup time. Decide whether
-hybrid retrieval and reranking are necessary after a vector-only baseline.
-Confirm Gemini model, quota, data handling, and cost controls; verify Streamlit
-deployment constraints. These choices should become follow-up ADRs.
+- Synthetic applicant data only.
+- Repository-level ownership checks on every operational lookup.
+- Parameterized predefined SQL; no unrestricted model-generated SQL.
+- Public approved guidance only in the shared vector index.
+- Database provenance for application facts and citations for knowledge claims.
+- Offline ingestion and artifact promotion.
+- Safe clarification or abstention when evidence is unavailable or unauthorized.
+- No raw applicant-style content in logs or provider telemetry.
 
 ## Alternatives considered
 
-- **Managed vector database:** rejected for MVP because it adds credentials,
-  cost, networking, and operational surface without demonstrated need.
-- **Custom web API and JavaScript frontend:** deferred because it expands
-  deployment work without improving the core RAG demonstration.
-- **Single-provider implementation:** rejected because provider boundaries are
-  important for local development, testing, and portability.
-- **Heavy RAG framework:** deferred until concrete orchestration complexity
-  justifies the abstraction.
+- **Vectorize all data:** rejected because it weakens isolation, deletion,
+  temporal precision, and provenance.
+- **Use SQL for public guidance:** rejected because natural-language semantic
+  retrieval over guidance is a core capability.
+- **Let the model generate arbitrary SQL:** rejected because schema exposure,
+  authorization bypass, injection, and unpredictable query cost are
+  unacceptable for the MVP.
+- **One combined evidence store:** rejected because public and private-style
+  data have incompatible access and citation rules.
+- **Managed databases immediately:** deferred until measured scale or deployment
+  requirements justify credentials, networking, and operational complexity.
+
+## Follow-up decisions
+
+Record the relational engine and migrations, synthetic identity mechanism,
+repository query catalog, vector implementation, embedding model, provider,
+deployment platform, and artifact promotion process in focused ADRs before
+their implementations are treated as production-ready.

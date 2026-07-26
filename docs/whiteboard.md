@@ -1,121 +1,140 @@
 # Architecture Whiteboard
 
-These diagrams capture the intended system shape. They are design aids rather
-than deployed-state documentation and should evolve with implementation.
+These diagrams describe the approved post-application design. SQL evidence and
+knowledge evidence remain separate until answer assembly.
 
 ## Overall architecture
 
 ```mermaid
 flowchart LR
-    User[User] --> UI[Streamlit UI]
-    UI --> App[RAG orchestrator]
-    App --> Guardrails[Scope and safety guardrails]
-    App --> Retriever[Retriever]
-    Retriever --> Index[(Local vector index)]
-    App --> Prompt[Prompt builder]
-    Prompt --> LLM[Gemini gateway]
-    LLM --> Validator[Answer and citation validator]
-    Validator --> UI
-
-    Registry[(Approved source registry)] --> Ingestion[Offline ingestion]
-    Ingestion --> Index
-    Index -. retrieved evidence .-> Prompt
+    User[Synthetic applicant] --> Portal[Portal UI]
+    Portal --> Identity[Trusted session identity]
+    Identity --> Router[Classifier and policy router]
+    Router --> SQLService[Structured retrieval service]
+    Router --> KBService[Knowledge retrieval service]
+    SQLService --> Authz[Repository authorization]
+    Authz --> DB[(Synthetic operational database)]
+    KBService --> Vector[(Official-guidance vector index)]
+    DB --> SQLEvidence[Application facts and DB provenance]
+    Vector --> KBEvidence[Guidance chunks and citations]
+    SQLEvidence --> Orchestrator[Evidence assembler]
+    KBEvidence --> Orchestrator
+    Orchestrator --> LLM[Provider-neutral LLM gateway]
+    LLM --> Validator[Answer and evidence validator]
+    Validator --> Portal
 ```
 
-The public request path is separate from ingestion. The UI delegates policy,
-retrieval, generation, and validation to application services.
-
-## RAG query flow
+## Structured-data retrieval
 
 ```mermaid
 sequenceDiagram
-    actor User
-    participant UI as Streamlit UI
-    participant RAG as RAG orchestrator
-    participant Guard as Guardrails
-    participant Search as Retriever
-    participant Index as Local index
-    participant LLM as Gemini
-    participant Check as Answer validator
+    actor User as Synthetic applicant
+    participant UI as Portal
+    participant Session as Session identity
+    participant App as Application service
+    participant Repo as Scoped repository
+    participant DB as Operational SQL database
 
-    User->>UI: Ask a question
-    UI->>RAG: Submit question
-    RAG->>Guard: Validate length, scope, and privacy
-    alt Invalid or out of scope
-        Guard-->>RAG: Reject safely
-        RAG-->>UI: Scoped guidance or abstention
-    else Valid question
-        Guard-->>RAG: Approved normalized query
-        RAG->>Search: Retrieve scoped evidence
-        Search->>Index: Similarity search with filters
-        Index-->>Search: Ranked chunks and provenance
-        Search-->>RAG: Relevant, fresh evidence
-        alt Evidence is insufficient
-            RAG-->>UI: Evidence-based abstention
-        else Evidence is sufficient
-            RAG->>LLM: Bounded prompt and evidence
-            LLM-->>RAG: Structured draft answer
-            RAG->>Check: Validate schema, claims, and citations
-            alt Validation fails
-                Check-->>RAG: Safe failure
-                RAG-->>UI: Abstention or error message
-            else Validation passes
-                Check-->>RAG: Validated answer
-                RAG-->>UI: Answer, citations, and verification dates
-            end
-        end
-    end
-    UI-->>User: Render result
+    User->>UI: Ask about my application
+    UI->>Session: Resolve trusted user_id
+    Session-->>App: user_id plus question
+    App->>App: Select predefined operation
+    App->>Repo: Operation(user_id, optional application_id)
+    Repo->>DB: Parameterized SQL with ownership predicate
+    DB-->>Repo: Authorized synthetic rows
+    Repo-->>App: Facts plus entity IDs and timestamps
+    App-->>UI: Application facts plus DB provenance
+    Note over App,DB: An application ID never replaces user_id authorization
 ```
 
-## Ingestion pipeline
+## Knowledge retrieval
+
+```mermaid
+flowchart LR
+    Q[General post-application question] --> Filters[Topic and scope filters]
+    Filters --> Embed[Query embedding]
+    Embed --> Search[Vector similarity search]
+    Search --> Index[(Promoted public KB index)]
+    Index --> Rank[Score, freshness, and source checks]
+    Rank -->|Sufficient| Evidence[Chunks with source provenance]
+    Rank -->|Insufficient| Abstain[Evidence unavailable abstention]
+    Evidence --> Answer[Cited guidance]
+```
+
+## Hybrid question flow
 
 ```mermaid
 flowchart TD
-    Registry[Reviewed source registry] --> Fetch[Bounded source fetch]
-    Fetch --> Metadata[Record metadata and content hash]
-    Metadata --> Parse[Parse and normalize]
-    Parse --> Inspect{Valid and safe to review?}
-    Inspect -- No --> Quarantine[Reject or quarantine]
-    Inspect -- Yes --> Chunk[Structure-aware chunking]
-    Chunk --> Provenance[Attach immutable provenance]
-    Provenance --> Embed[Sentence Transformer embeddings]
-    Embed --> Build[Build versioned local index]
-    Build --> Evaluate[Run ingestion checks and evaluation]
-    Evaluate --> Gate{Approved for promotion?}
-    Gate -- No --> Retain[Retain current production index]
-    Gate -- Yes --> Promote[Atomically promote index version]
-    Promote --> Production[(Production index artifact)]
+    Q[Hybrid question] --> Classify[Classify and decompose]
+    Classify --> FactNeed[Application fact need]
+    Classify --> GuidanceNeed[Guidance need]
+    FactNeed --> ScopedSQL[User-scoped SQL retrieval]
+    GuidanceNeed --> Semantic[Official KB retrieval]
+    ScopedSQL --> FactCheck{Authorized facts found?}
+    Semantic --> GuideCheck{Supported guidance found?}
+    FactCheck -->|No| Abstain[Abstain or clarify]
+    GuideCheck -->|No| Partial[Partial answer warning or abstention]
+    FactCheck -->|Yes| Merge[Typed evidence assembly]
+    GuideCheck -->|Yes| Merge
+    Merge --> Generate[Generate bounded answer]
+    Generate --> Validate[Validate DB provenance and citations]
+    Validate --> Render[Render Your application and Official guidance]
 ```
 
-Fetching a document does not make it available to users. Validation, evaluation,
-and explicit promotion form the publication gate.
+## Application status timeline
 
-## Deployment architecture
+```mermaid
+stateDiagram-v2
+    [*] --> Submitted
+    Submitted --> BiometricsScheduled: appointment created
+    BiometricsScheduled --> BiometricsCompleted: biometric event recorded
+    BiometricsCompleted --> UnderReview: processing event
+    UnderReview --> AdditionalDocumentsRequested: request issued
+    AdditionalDocumentsRequested --> UnderReview: synthetic response recorded
+    UnderReview --> DecisionRecorded: decision event
+    DecisionRecorded --> PassportDispatch: return tracking created
+    PassportDispatch --> Closed: delivery or collection recorded
+    Closed --> [*]
+    note right of UnderReview
+      Timeline is reconstructed from immutable,
+      timestamped status events; not every
+      synthetic scenario uses every state.
+    end note
+```
+
+## Ingestion and indexing
+
+```mermaid
+flowchart LR
+    Registry[Approved source registry] --> Fetch[Bounded allowlisted fetch]
+    Fetch --> Parse[HTML or PDF parsing]
+    Parse --> Normalize[Normalize and preserve headings]
+    Normalize --> Chunk[Structure-aware chunks]
+    Chunk --> Review[Provenance, freshness, and safety checks]
+    Review --> Embed[Embed public guidance only]
+    Embed --> Build[Build versioned index]
+    Build --> Evaluate[Retrieval and citation evaluation]
+    Evaluate -->|Pass| Promote[Atomic promotion]
+    Evaluate -->|Fail| Reject[Retain prior index]
+    Promote --> Index[(Public-guidance vector index)]
+    Private[Operational application records] -. prohibited .-> Embed
+```
+
+## Public deployment
 
 ```mermaid
 flowchart TB
-    subgraph Build["Offline build or CI environment"]
-        Sources[Approved official sources] --> Pipeline[Ingestion and evaluation]
-        Pipeline --> Artifact[Versioned index artifact]
-        Tests[Pytest and Ruff checks] --> ReleaseGate{Release gate}
-        Artifact --> ReleaseGate
-    end
-
-    ReleaseGate -->|approved artifact| Deploy[Streamlit deployment]
-
-    subgraph Cloud["Streamlit Community Cloud"]
-        Deploy --> App[Streamlit application]
-        App --> LocalIndex[(Read-only local index)]
-        App --> Config[Pydantic-validated config]
-        Secrets[Secret management] --> App
-        App --> Logs[Privacy-safe operational logs]
-    end
-
-    Browser[User browser] <-->|HTTPS| App
-    App -->|server-side API call| Gemini[Gemini API]
+    Browser[User browser] --> App[Public portal process]
+    App --> Session[Demo session identity]
+    App --> Router[Application services]
+    Router --> ReadOnlyDB[(Read-only synthetic SQL data)]
+    Router --> ReadOnlyIndex[(Promoted KB index artifact)]
+    Router --> Provider[External LLM API]
+    Secrets[Server-side secrets] --> Provider
+    Build[Offline ingestion and index build] --> Artifact[Versioned index artifact]
+    Artifact --> ReadOnlyIndex
+    Reset[Controlled synthetic-data reset] --> ReadOnlyDB
+    App --> Telemetry[Privacy-safe operational telemetry]
+    Browser -. no direct access .-> ReadOnlyDB
+    Browser -. no direct access .-> ReadOnlyIndex
 ```
-
-The deployed application loads a prebuilt index and never performs ingestion in
-response to a user request. Provider credentials remain server-side.
-
